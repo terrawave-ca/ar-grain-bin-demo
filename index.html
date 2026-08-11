@@ -167,8 +167,16 @@
   <p>Point your camera at open floor or ground. You'll place a life-size 36ft grain bin, then walk around it to see what a single sensor cable misses.</p>
   <button class="primary-btn" id="arButton" disabled>Checking device…</button>
   <div class="secondary-note" id="deviceNote"></div>
+  <div id="iosArButtons" style="display:none; flex-direction:column; gap:10px; margin-top:6px; width:100%; max-width:280px;">
+    <button class="primary-btn" id="iosArTruthBtn">View in AR — Full reality</button>
+    <button class="icon-btn" id="iosArCableBtn" style="width:auto; border-radius:999px; padding:10px 20px; font-family:'Space Grotesk',sans-serif; font-size:13px;">View cable-only baseline</button>
+  </div>
   <div class="space-note">This bin is real-size (36ft dia). You'll need open outdoor space to walk around it.</div>
 </div>
+
+<a id="quicklookAnchor" rel="ar" style="display:none;">
+  <img id="quicklookImg" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="">
+</a>
 
 <div class="hud" id="fallback-banner" style="display:none;">
   AR isn't supported on this browser — showing a 3D preview instead. Drag to rotate, scroll to zoom.
@@ -223,6 +231,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ARButton } from 'three/addons/webxr/ARButton.js';
+import { USDZExporter } from 'three/addons/exporters/USDZExporter.js';
 
 const container = document.getElementById('canvas-container');
 const startScreen = document.getElementById('start-screen');
@@ -239,6 +248,17 @@ const btnCable = document.getElementById('btnCable');
 const btnTruth = document.getElementById('btnTruth');
 const statusText = document.getElementById('statusText');
 const statusSub = document.getElementById('statusSub');
+const iosArButtons = document.getElementById('iosArButtons');
+const iosArTruthBtn = document.getElementById('iosArTruthBtn');
+const iosArCableBtn = document.getElementById('iosArCableBtn');
+const quicklookAnchor = document.getElementById('quicklookAnchor');
+
+function isIOS() {
+  const ua = navigator.userAgent;
+  const isIPhoneIpad = /iPad|iPhone|iPod/.test(ua);
+  const isIpadOSMasqueradingAsMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return isIPhoneIpad || isIpadOSMasqueradingAsMac;
+}
 
 let arSupported = false;
 
@@ -734,6 +754,34 @@ function animateScene() {
   currentScene.hotspotGroup.scale.setScalar(1 + Math.sin(t * 0.8) * 0.02);
 }
 
+// ---------- iOS: native AR via Quick Look (USDZ), since Safari has no WebXR ----------
+async function launchIOSAR(showHotspot) {
+  const exportScene = new THREE.Scene();
+  const built = buildBinScene(1.0);
+  built.blobMat.opacity = showHotspot ? 0.82 : 0.0;
+  built.hotLight.intensity = showHotspot ? 1.2 : 0.0;
+  exportScene.add(built.group);
+
+  const originalLabel = showHotspot ? iosArTruthBtn.textContent : iosArCableBtn.textContent;
+  const btn = showHotspot ? iosArTruthBtn : iosArCableBtn;
+  btn.textContent = 'Preparing model…';
+  btn.disabled = true;
+
+  try {
+    const exporter = new USDZExporter();
+    const arraybuffer = await exporter.parseAsync(exportScene);
+    const blob = new Blob([arraybuffer], { type: 'model/vnd.usdz+zip' });
+    const url = URL.createObjectURL(blob);
+    quicklookAnchor.href = url;
+    quicklookAnchor.click();
+  } catch (e) {
+    console.error('USDZ export failed', e);
+    btn.textContent = 'AR export failed — try again';
+  } finally {
+    setTimeout(() => { btn.textContent = originalLabel; btn.disabled = false; }, 1500);
+  }
+}
+
 // ---------- Device capability check ----------
 async function checkSupport() {
   if (navigator.xr && navigator.xr.isSessionSupported) {
@@ -749,10 +797,16 @@ async function checkSupport() {
     arButton.disabled = false;
     deviceNote.textContent = '';
     startARFlow();
+  } else if (isIOS()) {
+    arButton.style.display = 'none';
+    deviceNote.textContent = 'Your iPhone/iPad uses Apple\u2019s native AR viewer instead of a live toggle — pick a view below.';
+    iosArButtons.style.display = 'flex';
+    iosArTruthBtn.addEventListener('click', () => launchIOSAR(true));
+    iosArCableBtn.addEventListener('click', () => launchIOSAR(false));
   } else {
     arButton.textContent = 'View 3D preview';
     arButton.disabled = false;
-    deviceNote.textContent = 'AR needs Chrome on Android. On this device you\u2019ll get a rotatable 3D preview instead.';
+    deviceNote.textContent = 'AR needs Chrome on Android or Safari on iOS. On this browser you\u2019ll get a rotatable 3D preview instead.';
     arButton.addEventListener('click', startFallback);
   }
 }
