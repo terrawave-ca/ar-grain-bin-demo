@@ -290,10 +290,14 @@ const logoMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
   toneMapped: false
 });
+const logoReadyPromise = new Promise((resolve) => {
+  if (logoTexture.image) { resolve(); return; }
+  logoTextureLoader.load(TERRAWAVE_LOGO_DATA_URI, () => resolve());
+});
 
 // ---------- Build the bin scene (shared between AR and fallback) ----------
 // All dimensions are real feet (1 unit = 1 ft): 36ft diameter, 24ft eave — a real 30,000 bu bin.
-function buildBinScene(scale) {
+function buildBinScene(scale, exportSafe = false) {
   const group = new THREE.Group();
 
   const BIN_RADIUS = 18.0;
@@ -310,14 +314,16 @@ function buildBinScene(scale) {
   group.add(wall);
 
   const ridgeMat = new THREE.LineBasicMaterial({ color: 0x8A919C, transparent: true, opacity: 0.35 });
-  for (let i = 0; i < 32; i++) {
-    const angle = (i / 32) * Math.PI * 2;
-    const x = Math.cos(angle) * BIN_RADIUS;
-    const z = Math.sin(angle) * BIN_RADIUS;
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x, BIN_Y_BASE, z), new THREE.Vector3(x, BIN_Y_BASE + BIN_HEIGHT, z)
-    ]);
-    group.add(new THREE.Line(geo, ridgeMat));
+  if (!exportSafe) {
+    for (let i = 0; i < 32; i++) {
+      const angle = (i / 32) * Math.PI * 2;
+      const x = Math.cos(angle) * BIN_RADIUS;
+      const z = Math.sin(angle) * BIN_RADIUS;
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, BIN_Y_BASE, z), new THREE.Vector3(x, BIN_Y_BASE + BIN_HEIGHT, z)
+      ]);
+      group.add(new THREE.Line(geo, ridgeMat));
+    }
   }
 
   // ---- Roof: flat-topped cone (real bins don't come to a sharp point) ----
@@ -524,19 +530,22 @@ function buildBinScene(scale) {
     nodeMeshes.push(node);
 
     const sensingMat = new THREE.MeshBasicMaterial({
-      color: 0x6FF5EC, transparent: true, opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending
+      color: 0x6FF5EC, transparent: true, opacity: 0.26, depthWrite: false,
+      blending: exportSafe ? THREE.NormalBlending : THREE.AdditiveBlending
     });
     const sensingSphere = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 24, 24), sensingMat);
     sensingSphere.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
     cableGroup.add(sensingSphere);
     sensingSpheres.push(sensingSphere);
 
-    const sensingEdgeMat = new THREE.MeshBasicMaterial({
-      color: 0x9FFBF4, transparent: true, opacity: 0.4, wireframe: true, depthWrite: false
-    });
-    const sensingEdge = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 16, 12), sensingEdgeMat);
-    sensingEdge.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
-    cableGroup.add(sensingEdge);
+    if (!exportSafe) {
+      const sensingEdgeMat = new THREE.MeshBasicMaterial({
+        color: 0x9FFBF4, transparent: true, opacity: 0.4, wireframe: true, depthWrite: false
+      });
+      const sensingEdge = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 16, 12), sensingEdgeMat);
+      sensingEdge.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
+      cableGroup.add(sensingEdge);
+    }
   }
 
   // ---------- Hotspot (spoilage blob) ----------
@@ -756,29 +765,34 @@ function animateScene() {
 
 // ---------- iOS: native AR via Quick Look (USDZ), since Safari has no WebXR ----------
 async function launchIOSAR(showHotspot) {
-  const exportScene = new THREE.Scene();
-  const built = buildBinScene(1.0);
-  built.blobMat.opacity = showHotspot ? 0.82 : 0.0;
-  built.hotLight.intensity = showHotspot ? 1.2 : 0.0;
-  exportScene.add(built.group);
-
-  const originalLabel = showHotspot ? iosArTruthBtn.textContent : iosArCableBtn.textContent;
   const btn = showHotspot ? iosArTruthBtn : iosArCableBtn;
+  const originalLabel = btn.textContent;
   btn.textContent = 'Preparing model…';
   btn.disabled = true;
 
   try {
+    await logoReadyPromise;
+
+    const exportScene = new THREE.Scene();
+    const built = buildBinScene(1.0, true); // exportSafe = true
+    built.blobMat.opacity = showHotspot ? 0.82 : 0.0;
+    built.hotLight.intensity = showHotspot ? 1.2 : 0.0;
+    exportScene.add(built.group);
+    exportScene.updateMatrixWorld(true);
+
     const exporter = new USDZExporter();
     const arraybuffer = await exporter.parseAsync(exportScene);
     const blob = new Blob([arraybuffer], { type: 'model/vnd.usdz+zip' });
     const url = URL.createObjectURL(blob);
     quicklookAnchor.href = url;
     quicklookAnchor.click();
+    btn.textContent = originalLabel;
+    btn.disabled = false;
   } catch (e) {
     console.error('USDZ export failed', e);
-    btn.textContent = 'AR export failed — try again';
-  } finally {
-    setTimeout(() => { btn.textContent = originalLabel; btn.disabled = false; }, 1500);
+    const msg = (e && e.message) ? e.message : String(e);
+    btn.textContent = 'Export failed: ' + msg.slice(0, 60);
+    setTimeout(() => { btn.textContent = originalLabel; btn.disabled = false; }, 4000);
   }
 }
 
