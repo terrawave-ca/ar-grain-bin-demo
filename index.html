@@ -671,7 +671,16 @@ async function launchIOSAR() {
     iosArBtn.disabled = false;
   } catch (e) {
     console.error('USDZ export failed', e);
-    const msg = (e && e.stack) ? e.stack : ((e && e.message) ? e.message : String(e));
+    let extra = '';
+    try {
+      const keys = Object.getOwnPropertyNames(e || {});
+      extra = keys.length ? '\nkeys: ' + keys.join(', ') : '';
+    } catch (_) {}
+    const errName = (e && e.name) ? e.name : (e && e.constructor ? e.constructor.name : 'Unknown');
+    const errMsg = (e && e.message) ? e.message : (e ? String(e) : 'no error object');
+    const errCode = (e && typeof e.code !== 'undefined') ? ' (code ' + e.code + ')' : '';
+    const errStack = (e && e.stack) ? '\n\n' + e.stack : '';
+    const msg = errName + errCode + ': ' + errMsg + extra + errStack;
     iosArBtn.textContent = originalLabel;
     iosArBtn.disabled = false;
     iosArError.textContent = 'Export failed — ' + msg;
