@@ -199,10 +199,6 @@ const logoMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
   toneMapped: false
 });
-const logoReadyPromise = new Promise((resolve) => {
-  if (logoTexture.image) { resolve(); return; }
-  logoTextureLoader.load(TERRAWAVE_LOGO_DATA_URI, () => resolve());
-});
 
 // ---------- Build the bin scene (shared between AR and fallback) ----------
 // All dimensions are real feet (1 unit = 1 ft): 36ft diameter, 24ft eave — a real 30,000 bu bin.
@@ -389,7 +385,7 @@ function buildBinScene(scale, exportSafe = false) {
   const grainHeight = BIN_HEIGHT * 0.7;
   const grainMat = new THREE.MeshStandardMaterial({
     color: 0xD9A03C, roughness: 0.9, metalness: 0.0,
-    transparent: true, opacity: 0.5, depthWrite: false
+    transparent: true, opacity: exportSafe ? 0.3 : 0.5, depthWrite: false
   });
   const grain = new THREE.Mesh(new THREE.CylinderGeometry(BIN_RADIUS * 0.97, BIN_RADIUS * 0.97, grainHeight, 48, 1, true), grainMat);
   grain.position.y = BIN_Y_BASE + grainHeight / 2 + 0.05;
@@ -440,10 +436,15 @@ function buildBinScene(scale, exportSafe = false) {
     cableGroup.add(node);
     nodeMeshes.push(node);
 
-    const sensingMat = new THREE.MeshBasicMaterial({
-      color: 0x6FF5EC, transparent: true, opacity: 0.26, depthWrite: false,
-      blending: exportSafe ? THREE.NormalBlending : THREE.AdditiveBlending
-    });
+    const sensingMat = exportSafe
+      ? new THREE.MeshStandardMaterial({
+          color: 0x6FF5EC, emissive: 0x2FD3C9, emissiveIntensity: 0.4,
+          roughness: 0.6, metalness: 0.0, transparent: true, opacity: 0.3
+        })
+      : new THREE.MeshBasicMaterial({
+          color: 0x6FF5EC, transparent: true, opacity: 0.26, depthWrite: false,
+          blending: THREE.AdditiveBlending
+        });
     const sensingSphere = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 24, 24), sensingMat);
     sensingSphere.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
     cableGroup.add(sensingSphere);
@@ -646,28 +647,56 @@ function animateScene() {
 }
 
 // ---------- iOS: native AR via Quick Look (USDZ), since Safari has no WebXR ----------
-async function launchIOSAR() {
-  const originalLabel = iosArBtn.textContent;
-  iosArBtn.textContent = 'Preparing model…';
+
+// three.js changed the USDZExporter API across versions:
+//   r160-ish:  async parse(scene, options)        -> returns a Promise
+//   newer:     parse(scene, onDone, onError, opts) -> callback style
+//   newer:     parseAsync(scene, options)          -> returns a Promise
+// Detect which one this build actually has instead of assuming.
+async function exportUSDZ(exporter, sceneToExport) {
+  if (typeof exporter.parseAsync === 'function') {
+    return await exporter.parseAsync(sceneToExport);
+  }
+  if (typeof exporter.parse !== 'function') {
+    throw new Error('USDZExporter exposes neither parse() nor parseAsync()');
+  }
+  // Default params don't count toward Function.length, so the async form reports 1.
+  if (exporter.parse.length >= 2) {
+    return await new Promise((resolve, reject) => {
+      exporter.parse(sceneToExport, resolve, reject);
+    });
+  }
+  return await exporter.parse(sceneToExport);
+}
+
+// USDZ / AR Quick Look interprets model units as METERS. Our scene is built in
+// feet (1 unit = 1 ft), so without this the bin would appear ~118 ft across.
+const FEET_TO_METERS = 0.3048;
+
+let usdzObjectUrl = null;
+
+async function prepareUSDZ() {
+  const exportScene = new THREE.Scene();
+  const built = buildBinScene(FEET_TO_METERS, true);
+  exportScene.add(built.group);
+  exportScene.updateMatrixWorld(true);
+
+  const exporter = new USDZExporter();
+  const arraybuffer = await exportUSDZ(exporter, exportScene);
+  const blob = new Blob([arraybuffer], { type: 'model/vnd.usdz+zip' });
+  return URL.createObjectURL(blob);
+}
+
+async function initIOSAR() {
   iosArBtn.disabled = true;
+  iosArBtn.textContent = 'Preparing AR model…';
   iosArError.style.display = 'none';
   iosArError.textContent = '';
 
   try {
-    await logoReadyPromise;
-
-    const exportScene = new THREE.Scene();
-    const built = buildBinScene(1.0, true); // exportSafe = true — hotspot is already baked visible
-    exportScene.add(built.group);
-    exportScene.updateMatrixWorld(true);
-
-    const exporter = new USDZExporter();
-    const arraybuffer = await exporter.parseAsync(exportScene);
-    const blob = new Blob([arraybuffer], { type: 'model/vnd.usdz+zip' });
-    const url = URL.createObjectURL(blob);
-    quicklookAnchor.href = url;
-    quicklookAnchor.click();
-    iosArBtn.textContent = originalLabel;
+    usdzObjectUrl = await prepareUSDZ();
+    quicklookAnchor.href = usdzObjectUrl;
+    iosArBtn.textContent = 'View in AR';
     iosArBtn.disabled = false;
   } catch (e) {
     console.error('USDZ export failed', e);
@@ -680,12 +709,19 @@ async function launchIOSAR() {
     const errMsg = (e && e.message) ? e.message : (e ? String(e) : 'no error object');
     const errCode = (e && typeof e.code !== 'undefined') ? ' (code ' + e.code + ')' : '';
     const errStack = (e && e.stack) ? '\n\n' + e.stack : '';
-    const msg = errName + errCode + ': ' + errMsg + extra + errStack;
-    iosArBtn.textContent = originalLabel;
-    iosArBtn.disabled = false;
-    iosArError.textContent = 'Export failed — ' + msg;
+    iosArBtn.textContent = 'AR unavailable';
+    iosArBtn.disabled = true;
+    iosArError.textContent = 'Export failed — ' + errName + errCode + ': ' + errMsg + extra + errStack;
     iosArError.style.display = 'block';
   }
+}
+
+// The model is built up-front (above), so this handler stays synchronous and
+// therefore runs inside the user's tap gesture — Safari blocks navigation
+// triggered from an async continuation.
+function launchIOSAR() {
+  if (!usdzObjectUrl) return;
+  quicklookAnchor.click();
 }
 
 // ---------- Device capability check ----------
@@ -707,7 +743,8 @@ async function checkSupport() {
     arButton.style.display = 'none';
     deviceNote.textContent = 'Your iPhone/iPad uses Apple\u2019s native AR viewer.';
     iosArButtons.style.display = 'flex';
-    iosArBtn.addEventListener('click', () => launchIOSAR());
+    iosArBtn.addEventListener('click', launchIOSAR);
+    initIOSAR();
   } else {
     arButton.textContent = 'View 3D preview';
     arButton.disabled = false;
