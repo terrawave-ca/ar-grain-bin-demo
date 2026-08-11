@@ -80,58 +80,6 @@
     text-shadow: 0 2px 8px rgba(0,0,0,0.8);
   }
 
-  #legend {
-    top: 20px; left: 16px;
-    background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px);
-    font-size: 11px; display: flex; flex-direction: column; gap: 6px;
-    max-width: 230px;
-  }
-
-  .legend-row { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .dot.node { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
-  .dot.hot { background: var(--hot); box-shadow: 0 0 6px var(--hot); }
-  .dot.cable { background: #5A6270; }
-  .legend-divider {
-    margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--panel-border);
-  }
-  .legend-dims {
-    color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
-  }
-
-  #readout {
-    top: 20px; right: 16px;
-    background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px);
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; min-width: 140px;
-  }
-
-  #readout .label { color: var(--text-secondary); text-transform: uppercase; font-size: 9px; margin-bottom: 4px; letter-spacing: 0.06em; }
-  #readout .status { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
-  #readout .status.ok { color: var(--teal); }
-  #readout .status.warn { color: var(--hot); }
-  #readout .sub { color: var(--text-secondary); font-size: 10px; }
-
-  #bottom-controls {
-    bottom: 24px; left: 16px; right: 16px;
-    display: flex; flex-direction: column; align-items: center; gap: 12px;
-  }
-
-  .toggle-group {
-    display: flex; background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 999px; padding: 4px; backdrop-filter: blur(8px); gap: 4px;
-  }
-
-  .toggle-btn {
-    font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500;
-    color: var(--text-secondary); background: transparent; border: none;
-    border-radius: 999px; padding: 10px 18px; cursor: pointer; white-space: nowrap;
-    transition: all 0.2s ease;
-  }
-
-  .toggle-btn.active { background: var(--amber); color: #201400; }
-
   .icon-btn {
     width: 42px; height: 42px; border-radius: 50%;
     background: var(--panel); border: 1px solid var(--panel-border);
@@ -151,9 +99,7 @@
   .hidden { display: none !important; }
 
   @media (max-width: 380px) {
-    .toggle-btn { padding: 9px 14px; font-size: 12px; }
     #start-screen h1 { font-size: 20px; }
-    #legend { max-width: 190px; font-size: 10px; }
   }
 </style>
 </head>
@@ -164,13 +110,13 @@
 <div id="start-screen">
   <p class="eyebrow">TerraWave · AR field demo</p>
   <h1>See the spoilage your cable can't</h1>
-  <p>Point your camera at open floor or ground. You'll place a life-size 36ft grain bin, then walk around it to see what a single sensor cable misses.</p>
+  <p>Point your camera at open floor or ground. You'll place a life-size 36ft grain bin and see what a single sensor cable misses.</p>
   <button class="primary-btn" id="arButton" disabled>Checking device…</button>
   <div class="secondary-note" id="deviceNote"></div>
   <div id="iosArButtons" style="display:none; flex-direction:column; gap:10px; margin-top:6px; width:100%; max-width:280px;">
-    <button class="primary-btn" id="iosArTruthBtn">View in AR — Full reality</button>
-    <button class="icon-btn" id="iosArCableBtn" style="width:auto; border-radius:999px; padding:10px 20px; font-family:'Space Grotesk',sans-serif; font-size:13px;">View cable-only baseline</button>
+    <button class="primary-btn" id="iosArBtn">View in AR</button>
   </div>
+  <div class="secondary-note" id="iosArError" style="display:none; color:#FF6A5A; text-align:left; white-space:pre-wrap; word-break:break-word;"></div>
   <div class="space-note">This bin is real-size (36ft dia). You'll need open outdoor space to walk around it.</div>
 </div>
 
@@ -184,38 +130,8 @@
 
 <div class="hud" id="reticle-hint" style="display:none;">Tap to place the bin</div>
 
-<div class="hud" id="legend" style="display:none;">
-  <div class="legend-row"><span class="dot cable"></span> Temp/moisture cable</div>
-  <div class="legend-row"><span class="dot node"></span> Node · every 2 ft</div>
-  <div class="legend-row"><span class="dot node" style="opacity:0.4;"></span> Sensing radius (1 ft)</div>
-  <div class="legend-row"><span class="dot hot"></span> Spoilage hotspot</div>
-  <div class="legend-row legend-divider">
-    <span class="dot" style="background:#161616;"></span> TerraWave radar sensor
-  </div>
-  <div class="legend-row">
-    <span class="dot" style="background:#1F2126;"></span> IoT gateway + solar
-  </div>
-  <div class="legend-row">
-    <span class="dot" style="background:#2A2E33;"></span> Wall-mounted patch sensors
-  </div>
-  <div class="legend-row legend-divider legend-dims">36 ft dia · 24 ft eave · 30,000 bu</div>
-</div>
-
-<div class="hud" id="readout" style="display:none;">
-  <div class="label">Cable status</div>
-  <div class="status ok" id="statusText">All nodes normal</div>
-  <div class="sub" id="statusSub">Temp/moisture normal, ~14°C</div>
-</div>
-
 <div class="hud" id="exit-ar" style="display:none;">
   <button class="icon-btn" id="exitBtn" aria-label="Exit AR">✕</button>
-</div>
-
-<div class="hud" id="bottom-controls" style="display:none;">
-  <div class="toggle-group">
-    <button class="toggle-btn active" id="btnCable">What the cable sees</button>
-    <button class="toggle-btn" id="btnTruth">Full reality</button>
-  </div>
 </div>
 
 <script type="importmap">
@@ -239,18 +155,11 @@ const arButton = document.getElementById('arButton');
 const deviceNote = document.getElementById('deviceNote');
 const fallbackBanner = document.getElementById('fallback-banner');
 const reticleHint = document.getElementById('reticle-hint');
-const legend = document.getElementById('legend');
-const readout = document.getElementById('readout');
 const exitArDiv = document.getElementById('exit-ar');
 const exitBtn = document.getElementById('exitBtn');
-const bottomControls = document.getElementById('bottom-controls');
-const btnCable = document.getElementById('btnCable');
-const btnTruth = document.getElementById('btnTruth');
-const statusText = document.getElementById('statusText');
-const statusSub = document.getElementById('statusSub');
 const iosArButtons = document.getElementById('iosArButtons');
-const iosArTruthBtn = document.getElementById('iosArTruthBtn');
-const iosArCableBtn = document.getElementById('iosArCableBtn');
+const iosArBtn = document.getElementById('iosArBtn');
+const iosArError = document.getElementById('iosArError');
 const quicklookAnchor = document.getElementById('quicklookAnchor');
 
 function isIOS() {
@@ -461,12 +370,14 @@ function buildBinScene(scale, exportSafe = false) {
     const patchBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.1), patchMat);
     patchGroup.add(patchBody);
 
-    const logoHeight = 0.28;
-    const logoWidth = logoHeight * LOGO_ASPECT;
-    const patchLogo = new THREE.Mesh(new THREE.PlaneGeometry(logoWidth, logoHeight), logoMat);
-    patchLogo.position.set(0, -0.08, 0.052);
-    patchLogo.renderOrder = 5;
-    patchGroup.add(patchLogo);
+    if (!exportSafe) {
+      const logoHeight = 0.28;
+      const logoWidth = logoHeight * LOGO_ASPECT;
+      const patchLogo = new THREE.Mesh(new THREE.PlaneGeometry(logoWidth, logoHeight), logoMat);
+      patchLogo.position.set(0, -0.08, 0.052);
+      patchLogo.renderOrder = 5;
+      patchGroup.add(patchLogo);
+    }
 
     const patchLight = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), patchLightMat);
     patchLight.position.set(0, 0.25, 0.07);
@@ -567,49 +478,25 @@ function buildBinScene(scale, exportSafe = false) {
 
   const blobMat = new THREE.MeshStandardMaterial({
     color: 0xFF4D2E, emissive: 0xFF3A1E, emissiveIntensity: 0.55,
-    roughness: 0.55, transparent: true, opacity: 0, depthWrite: false
+    roughness: 0.55, transparent: true, opacity: 0.82, depthWrite: false
   });
   const blob = new THREE.Mesh(blobGeo, blobMat);
   blob.renderOrder = 10;
   hotspotGroup.add(blob);
 
-  const hotLight = new THREE.PointLight(0xFF5A32, 0, 4.2);
-  hotspotGroup.add(hotLight);
+  let hotLight = null;
+  if (!exportSafe) {
+    hotLight = new THREE.PointLight(0xFF5A32, 1.2, 4.2);
+    hotspotGroup.add(hotLight);
+  }
 
   group.scale.setScalar(scale);
 
   return { group, nodeMeshes, sensingSpheres, patchMeshes, blobMat, hotLight, hotspotGroup };
 }
 
-// ---------- Mode toggle logic (shared) ----------
+// ---------- Shared state ----------
 let currentScene = null;
-let mode = 'cable';
-const fade = { current: 0, target: 0 };
-
-function setMode(next) {
-  mode = next;
-  btnCable.classList.toggle('active', mode === 'cable');
-  btnTruth.classList.toggle('active', mode === 'truth');
-  fade.target = mode === 'truth' ? 0.82 : 0.0;
-  if (mode === 'cable') {
-    statusText.textContent = 'All nodes normal';
-    statusText.className = 'status ok';
-    statusSub.textContent = 'Temp/moisture normal, ~14°C';
-  } else {
-    statusText.textContent = 'Hotspot undetected';
-    statusText.className = 'status warn';
-    statusSub.textContent = 'Cable reads normal — spoilage sits off-line';
-  }
-}
-btnCable.addEventListener('click', () => setMode('cable'));
-btnTruth.addEventListener('click', () => setMode('truth'));
-
-function showUI() {
-  legend.style.display = 'flex';
-  readout.style.display = 'block';
-  bottomControls.style.display = 'flex';
-  setMode('cable');
-}
 
 // ---------- AR path ----------
 let reticle, hitTestSource = null, hitTestSourceRequested = false;
@@ -634,7 +521,6 @@ function onSelect() {
   placed = true;
   reticle.visible = false;
   reticleHint.style.display = 'none';
-  showUI();
 }
 
 function startARFlow() {
@@ -730,7 +616,6 @@ function startFallback() {
   const built = buildBinScene(1.0);
   scene.add(built.group);
   currentScene = built;
-  showUI();
 
   function loop() {
     requestAnimationFrame(loop);
@@ -757,26 +642,22 @@ function animateScene() {
     light.material.emissiveIntensity = 0.6 + 0.35 * Math.sin(t * 1.2 + i * 0.9);
   });
 
-  fade.current += (fade.target - fade.current) * 0.06;
-  currentScene.blobMat.opacity = fade.current;
-  currentScene.hotLight.intensity = 1.2 * (fade.current / 0.82);
   currentScene.hotspotGroup.scale.setScalar(1 + Math.sin(t * 0.8) * 0.02);
 }
 
 // ---------- iOS: native AR via Quick Look (USDZ), since Safari has no WebXR ----------
-async function launchIOSAR(showHotspot) {
-  const btn = showHotspot ? iosArTruthBtn : iosArCableBtn;
-  const originalLabel = btn.textContent;
-  btn.textContent = 'Preparing model…';
-  btn.disabled = true;
+async function launchIOSAR() {
+  const originalLabel = iosArBtn.textContent;
+  iosArBtn.textContent = 'Preparing model…';
+  iosArBtn.disabled = true;
+  iosArError.style.display = 'none';
+  iosArError.textContent = '';
 
   try {
     await logoReadyPromise;
 
     const exportScene = new THREE.Scene();
-    const built = buildBinScene(1.0, true); // exportSafe = true
-    built.blobMat.opacity = showHotspot ? 0.82 : 0.0;
-    built.hotLight.intensity = showHotspot ? 1.2 : 0.0;
+    const built = buildBinScene(1.0, true); // exportSafe = true — hotspot is already baked visible
     exportScene.add(built.group);
     exportScene.updateMatrixWorld(true);
 
@@ -786,13 +667,15 @@ async function launchIOSAR(showHotspot) {
     const url = URL.createObjectURL(blob);
     quicklookAnchor.href = url;
     quicklookAnchor.click();
-    btn.textContent = originalLabel;
-    btn.disabled = false;
+    iosArBtn.textContent = originalLabel;
+    iosArBtn.disabled = false;
   } catch (e) {
     console.error('USDZ export failed', e);
-    const msg = (e && e.message) ? e.message : String(e);
-    btn.textContent = 'Export failed: ' + msg.slice(0, 60);
-    setTimeout(() => { btn.textContent = originalLabel; btn.disabled = false; }, 4000);
+    const msg = (e && e.stack) ? e.stack : ((e && e.message) ? e.message : String(e));
+    iosArBtn.textContent = originalLabel;
+    iosArBtn.disabled = false;
+    iosArError.textContent = 'Export failed — ' + msg;
+    iosArError.style.display = 'block';
   }
 }
 
@@ -813,10 +696,9 @@ async function checkSupport() {
     startARFlow();
   } else if (isIOS()) {
     arButton.style.display = 'none';
-    deviceNote.textContent = 'Your iPhone/iPad uses Apple\u2019s native AR viewer instead of a live toggle — pick a view below.';
+    deviceNote.textContent = 'Your iPhone/iPad uses Apple\u2019s native AR viewer.';
     iosArButtons.style.display = 'flex';
-    iosArTruthBtn.addEventListener('click', () => launchIOSAR(true));
-    iosArCableBtn.addEventListener('click', () => launchIOSAR(false));
+    iosArBtn.addEventListener('click', () => launchIOSAR());
   } else {
     arButton.textContent = 'View 3D preview';
     arButton.disabled = false;
