@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>TerraWave — Grain Bin Blind Spot AR</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --bg: #0B0F14;
+    --panel: rgba(16, 22, 29, 0.85);
+    --panel-border: rgba(255,255,255,0.08);
+    --text-primary: #F4EFE6;
+    --text-secondary: #9AA3AF;
+    --amber: #E8B04B;
+    --teal: #2FD3C9;
+    --hot: #FF4D2E;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+    font-family: 'Space Grotesk', sans-serif;
+    color: var(--text-primary);
+  }
+
+  #canvas-container { position: absolute; inset: 0; }
+  canvas { display: block; touch-action: none; }
+
+  .hud { position: absolute; z-index: 10; pointer-events: none; }
+  .hud * { pointer-events: auto; }
+
+  #start-screen {
+    position: absolute; inset: 0; z-index: 20;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 32px;
+    background: radial-gradient(circle at 50% 30%, #141b23, #0B0F14 70%);
+  }
+
+  #start-screen .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--amber); margin-bottom: 10px;
+  }
+
+  #start-screen h1 { font-size: 24px; font-weight: 500; margin: 0 0 12px; max-width: 340px; line-height: 1.3; }
+  #start-screen p { font-size: 14px; color: var(--text-secondary); max-width: 320px; line-height: 1.6; margin: 0 0 20px; }
+
+  .primary-btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px; font-weight: 500;
+    background: var(--amber); color: #201400;
+    border: none; border-radius: 999px;
+    padding: 14px 32px; cursor: pointer;
+  }
+
+  .primary-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .secondary-note {
+    margin-top: 16px; font-size: 12px; color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', monospace; max-width: 300px; line-height: 1.6;
+  }
+
+  .space-note {
+    margin-top: 10px; font-size: 11px; color: var(--amber);
+    font-family: 'IBM Plex Mono', monospace; max-width: 300px; line-height: 1.6;
+  }
+
+  #reticle-hint {
+    bottom: 150px; left: 0; right: 0; text-align: center;
+    font-size: 13px; color: var(--text-primary);
+    font-family: 'IBM Plex Mono', monospace;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+  }
+
+  #legend {
+    top: 20px; left: 16px;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px);
+    font-size: 11px; display: flex; flex-direction: column; gap: 6px;
+    max-width: 230px;
+  }
+
+  .legend-row { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.node { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+  .dot.hot { background: var(--hot); box-shadow: 0 0 6px var(--hot); }
+  .dot.cable { background: #5A6270; }
+  .legend-divider {
+    margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+  }
+  .legend-dims {
+    color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
+  }
+
+  #readout {
+    top: 20px; right: 16px;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; min-width: 140px;
+  }
+
+  #readout .label { color: var(--text-secondary); text-transform: uppercase; font-size: 9px; margin-bottom: 4px; letter-spacing: 0.06em; }
+  #readout .status { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  #readout .status.ok { color: var(--teal); }
+  #readout .status.warn { color: var(--hot); }
+  #readout .sub { color: var(--text-secondary); font-size: 10px; }
+
+  #bottom-controls {
+    bottom: 24px; left: 16px; right: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+
+  .toggle-group {
+    display: flex; background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 999px; padding: 4px; backdrop-filter: blur(8px); gap: 4px;
+  }
+
+  .toggle-btn {
+    font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 500;
+    color: var(--text-secondary); background: transparent; border: none;
+    border-radius: 999px; padding: 10px 18px; cursor: pointer; white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+
+  .toggle-btn.active { background: var(--amber); color: #201400; }
+
+  .icon-btn {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    color: var(--text-secondary); font-size: 18px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+
+  #exit-ar { top: 20px; left: 50%; transform: translateX(-50%); }
+
+  #fallback-banner {
+    top: 0; left: 0; right: 0;
+    background: rgba(232, 176, 75, 0.14); border-bottom: 1px solid var(--panel-border);
+    padding: 10px 16px; font-size: 12px; text-align: center; color: var(--amber);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 380px) {
+    .toggle-btn { padding: 9px 14px; font-size: 12px; }
+    #start-screen h1 { font-size: 20px; }
+    #legend { max-width: 190px; font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="start-screen">
+  <p class="eyebrow">TerraWave · AR field demo</p>
+  <h1>See the spoilage your cable can't</h1>
+  <p>Point your camera at open floor or ground. You'll place a life-size 36ft grain bin, then walk around it to see what a single sensor cable misses.</p>
+  <button class="primary-btn" id="arButton" disabled>Checking device…</button>
+  <div class="secondary-note" id="deviceNote"></div>
+  <div class="space-note">This bin is real-size (36ft dia). You'll need open outdoor space to walk around it.</div>
+</div>
+
+<div class="hud" id="fallback-banner" style="display:none;">
+  AR isn't supported on this browser — showing a 3D preview instead. Drag to rotate, scroll to zoom.
+</div>
+
+<div class="hud" id="reticle-hint" style="display:none;">Tap to place the bin</div>
+
+<div class="hud" id="legend" style="display:none;">
+  <div class="legend-row"><span class="dot cable"></span> Temp/moisture cable</div>
+  <div class="legend-row"><span class="dot node"></span> Node · every 2 ft</div>
+  <div class="legend-row"><span class="dot node" style="opacity:0.4;"></span> Sensing radius (1 ft)</div>
+  <div class="legend-row"><span class="dot hot"></span> Spoilage hotspot</div>
+  <div class="legend-row legend-divider">
+    <span class="dot" style="background:#161616;"></span> TerraWave radar sensor
+  </div>
+  <div class="legend-row">
+    <span class="dot" style="background:#1F2126;"></span> IoT gateway + solar
+  </div>
+  <div class="legend-row">
+    <span class="dot" style="background:#2A2E33;"></span> Wall-mounted patch sensors
+  </div>
+  <div class="legend-row legend-divider legend-dims">36 ft dia · 24 ft eave · 30,000 bu</div>
+</div>
+
+<div class="hud" id="readout" style="display:none;">
+  <div class="label">Cable status</div>
+  <div class="status ok" id="statusText">All nodes normal</div>
+  <div class="sub" id="statusSub">Temp/moisture normal, ~14°C</div>
+</div>
+
+<div class="hud" id="exit-ar" style="display:none;">
+  <button class="icon-btn" id="exitBtn" aria-label="Exit AR">✕</button>
+</div>
+
+<div class="hud" id="bottom-controls" style="display:none;">
+  <div class="toggle-group">
+    <button class="toggle-btn active" id="btnCable">What the cable sees</button>
+    <button class="toggle-btn" id="btnTruth">Full reality</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ARButton } from 'three/addons/webxr/ARButton.js';
+
+const container = document.getElementById('canvas-container');
+const startScreen = document.getElementById('start-screen');
+const arButton = document.getElementById('arButton');
+const deviceNote = document.getElementById('deviceNote');
+const fallbackBanner = document.getElementById('fallback-banner');
+const reticleHint = document.getElementById('reticle-hint');
+const legend = document.getElementById('legend');
+const readout = document.getElementById('readout');
+const exitArDiv = document.getElementById('exit-ar');
+const exitBtn = document.getElementById('exitBtn');
+const bottomControls = document.getElementById('bottom-controls');
+const btnCable = document.getElementById('btnCable');
+const btnTruth = document.getElementById('btnTruth');
+const statusText = document.getElementById('statusText');
+const statusSub = document.getElementById('statusSub');
+
+let arSupported = false;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 200);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.xr.enabled = true;
+container.appendChild(renderer.domElement);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
+
+// ---------- TerraWave logo texture (embedded so the file stays self-contained) ----------
+const TERRAWAVE_LOGO_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAR0AAAEQCAYAAACN9KClAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyVpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDcuMS1jMDAwIDc5LmIwZjhiZTkwLCAyMDIxLzEyLzE1LTIxOjI1OjE1ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjMuMiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6ODk3QUI2RENBODEyMTFFRTgyNkZEQ0FFM0M1RDlCRjciIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6ODk3QUI2RERBODEyMTFFRTgyNkZEQ0FFM0M1RDlCRjciPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDo4OTdBQjZEQUE4MTIxMUVFODI2RkRDQUUzQzVEOUJGNyIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDo4OTdBQjZEQkE4MTIxMUVFODI2RkRDQUUzQzVEOUJGNyIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PoWxl7YAACTmSURBVHja7J0LlFXVmee/b59760U9qZKXCEn5SESjJkQlUshMhLQz6XRnlsFkMpOe2EKVgLyk0+lZs7orZK3ujJ0oBShYaHe605lOR5xMJuYtpoMUSDQ4kQ4koqKIvCmo9+ves7/5n1uFvIqiCoqqW1X/36I4z3se3977d/c+95yz1cwkQlWFDA6zqr9c0BY2uJPTSc3KiZllnpz2YnEXt9z3pkOnTqXw9G2Yap6aj/V2n0juUeY1o+9HmzqOeNdGOsSkua9bwL7bTaylDx9J4FNNpw7BmwRSd+ZhxRol6ZPvxSgj0eY6fOup6dzk1rlfb2RuGxxOeiaV/iNNOnevWpTZFE/mhBk5+YFHwdZknjOXg2yMQm5FnRFyKFgWR1BiyOB5XQHKRYTiKCwxDPO6whcNY6lCaJ1SMJV8NQ1S87RrnmCepOZh3OALLWA2TIeCIHXI9p0FwCSJ9DoppUYkJARmkJ00dUm9AekeYrRdTgoTn0e+wOetDdvqEpye6BxE09bmTEKf+mzYgpRv997q4pBumEw2B4fHNG5asSJJ6aTVkYqWrZtfqLGgUJMZhaGGBQ4FFt/8BeqkEMmdH8kApzAKRw+BRN/+loXPZeOjBcgP0Td5npmOwjBTz6odEJIGmdyj9NVLJC2FvAQiNOlIyU61CdPt8GI91mnDvEhkWFcbTHy9iasPnNR59fWhxuszgmT9pvtW1VE6Xdy1ZmFxe8yNRaDGBM5NMPNjIIYxkQjw7R998xdENQAcTSSOgq7aQD4zJSF9r8HhC7gukhXKWH1KWpjXOS71pnYEYjuMVQ86DY7EJX5wY8XD9UNGOrO/tXxUa3viavFaCgNfhZMdgxOagEWQiozFcDxOegx2kMHsQEjaNn/aYICUiCCnI2glHEJ5PoTpI6iKvaMWvhlkjd6z6b4VbQMnncpKN31cw4ew2kewiejvZgjmWtRIxjHJCBkJZooueNgB2OJ1WOM3mPOKqbyyZV7VLjl5baw/pDNt3bIrY2p/gTXvgWDGM/KEkLOMshfyeSaQ4H9uqnj02IWk4y60vQwnMyGxcgqHENItqpNRZVlgPnlbr1bvTfNq2pPLRsfN/xHaeJ/AZNS0uhafcIw2ISO2pZVUk9dSTSyTn3R0+B+9tGRNQ780r7pj5mMLcpMZmTeqD6/B567Bp6/GVq7GkVzFi8aEDJdWk7WJylG0cvZCMm9imPoTCV/vaAp+u235ytY+bOvSpHMhoppRLJkcJy52hXg/wTkd463zlyzscQyG49R0HE7oCjl5dyshZABqKNKO/45i9GDq1yq1oya6H0uOOtVD5u3Q5fgZPa1uDpxaXZ6TIzkF6qwwNFfgxKfu0fE+db9OkUQ3+YkVWOeNfWfcy4PmXh5v+CMjqU0T3X8jqTumo/turF6jGwv15Li8dz8OSvaJ1DKvdaH5+riP17e3h/V9qZ30c60pfaTTH5x8tMGCeF7gJdPHJN+8ZKu4LE1JLMj00WMKKqNw9hk416JomJoWzUMIMlJii+5aFs3pDEhKbJitWRjPxjpKwZEeRCBdj0e0Y0aoJl3XNyx6jCKREoNJO/JQc/QcGT4WPbdWh9pFm0/djawNznxH9MiEeEzHfFv0yESQjHeYtjYdLxnTvOveFR1DuKk2vKQzGLWz7DDIzAydaw/inc9RxX3ng5BeY13PZL33ECZimwEJjnov6J3PcOWevs2UCM/My6lnvU5bIwv/ZZ9WTQ6QeGfesY39YUGsb2VGclRPPVzauw9FIk5lnPa+RU7b5L1nlHq7K+nArprPPGatR3b1pzK0NOMcOk5Na0dn4X4vlpZ6TuqMQ4EUTMPTSkWjOEnKaQ+XqtcGi4VhkJD2UFzqeatkXOtiiTZLtma1DVatgdIhhJA+SIc/exNCBhRKhxBC6RBCKB1CCKF0CCGUDiGEUDqEEEqHEELpEEIIpUMIoXQIIYTSIYRQOoQQQukQQigdQgilQwghlA4hhNIhhBBKhxBC6RBCCKVDCKF0CCGUDiGEUDqEEEqHEEIoHUIIpUMIoXQIIYTSIYRQOoQQQukQQigdQgihdAghlA4hZAQSYwjShzlPzwkOHivJ75zKLOr8VnAFPp504oNcEYs7sRyPhWKWiaU5KhI3sdxoXVXNwGBUd9s2k1GqlnGeZYX4rHazIMofeX05B1NtwIbCc+aLeBWr7/5T2ob/Wrvdnlgj/kt2riYN2EGoTprNrMNM23DUrRqNB9bsscwlsf9Y0iwZ1kUfqTk8pl5WrPDMXekD0sukK8MyGr1ganV5PO5G5cUSVuhjlh8TzZPQ56Gw5ZloAQpGYaqgmuVptEwF81GoUUIQZMyXmKmNQrQzUICysDwbaZCB+I9idC8jBnmpQl7Wgqn2lOgsEp0lMN2E1IEUtR5p1YC0asByrC+NKB4NzkldGH0eAoTwsNw3RlIbX3KsYcO9G0IGtzfht5ErnZmPLchNxmOjUYMowWSJeStWZ8VmLh8hyI++9REVCCP6hk9JAuKwIggC8sB8hSgIOUUL8kynkFLSsnrkkYaU5EQi0UFcdkLUNTq1Yyhtx3yotbEgWdveGKvdtnxlK6UzxJj2yLLszBw/Ft9U41GZGCPOxuGMxmLRGIhiHE6rGBmhWE2LsU6xRk0TQtKnOLYi39ai6VuLoliL/HkENayj+LI7gpJ60Ks7gmVHNBkcGJVMHPnpkjXtlM5lvL6xr3biuCCQq5yFV6q4id5sIo7zSiy+CmcxBk2aCTjqXGZcMnKaKVKHUntITQ6j0O7DF+q7KrYftax3vLP9QXvG/k0Lv4FlYpRON9zx1MIJGgalaE2XOtWrEahSHN77seh9UW0FgeSFbkL6XsI78IV8AIV7L8rUHuhnD4r5m+IwHvN7au5fc3RYSydq/sRz7Xqc/PXm5QYI+IPY2Qew31JeHyFkUKTUmJKR6G5M7EI53KVJv+toSdHuXfeu6BhS0pn52J+NS8aSt6INequafhhbnxLVWrB13g9ESLq7SCyJ1sWbMMJOTL2C8ZctbH+5ZsG6E+khncpKVzbxxIc11I+jKjcNm70VB3kVk46Q4VYxsjfgh5dhiF9p6J/ftGD1bwdMOrc/uXhszOsnnclsU5kFyZQwSQgZcVWiA7DGz53qcz5s+0lvakJ9k05Uo5lQ/3EsLcfUp/EXZ9QJIZ3+kXa44QcYrq8pr3r+fL+a9Vo6ZdXLPofVv6ap6zKEENIju9T7L70wf/WPe5LOeS/wlj2xdA2k9R0KhxDSS6aYuh+WVS/5q55W6ramc2f14ltN3EuMISHkItpcZl6uqVlQtafXNR1Tfyy6wYjRI4RchHWaMsNE/fmWdiudzeWPvWWm/wVuamIACSG9940dR/PpnucXPV7bJ+lE1MyveibQ8HrUlJ5C1aiZ0SSE9NCiimo2qy3uP/jC/NXP9bRur+7TuW3VovyMzOBzWOVPsfXbRIUv3yGEqvHwwWZT/btWafnf2yvWt5y/AnQJdyR/bO3yMUGQnIm1Z2Hyk/jklQw+ISOl9SSHoYoXMNzoY4kfbp37+IHefa6/nr0y0TvXL7vRfHibqbtVNPUoxIeENxASMgyaTKkb/34DRbwMPfxanb30wrxVv7s4WV3Gp8xnfrMyK5louMV5uwVbvkGjp8vFpkBG45mMhKSrYGwfBr9Tk53m5Hcwwyutvm0HmkyJ/qkhDcL7dMrWzi8SzZwigU0RL9dhh6U4wdLOd+hIPpOdkMvOiejdOp2vtcCf96+b0992tPnfvbRkTcPlbZal2ZsDZ1Y/VOK9lcKwpTi6SEKTcGQTU0NJvR2wmPmFkAtWV6KXc+1H2dmH8X0o2e+kBONsjyQSe/rjFRXDRjoXInoRmMv2k4KYXulDm6hOrsLRjsWhj8WBj8MpnXwfciFzHhl+Lkm9O/kwSu5R5Pfowi3kYodM9F2U3HcCB9HE8t/ddN+KtrQ9h+HaG8TdqxZlNsfi0cvZx1sQjhEfXKFqUS2pBGdZEtWYcL7Ry9lHd76kXaNlvOhNBrL0dSDv1aLE1aLw1ZpGQ6mNeolwGDf1tfgCPWrOH0omg0MNxflHL9fb/CidQSK6BykzG2KyWBGaePlR31RBqg8rn9fZCV3ULY3mR93SRF3SIGD5nX1bpbqkyU/N48vhR4owotd8NljUtYxpY9R5IGob0U1xjZrqCFAaU50Dip5IrRtYo3ptUB80JjL0uIo7vnXu1xtHZugonf6u/2rZuvmFYUZOfkZHIs8HkZhcJK1OQZlkR39Rb5wIdC5iHkQy60qCos5NWAG+8aI7xCEwjUed8GFu9A7pTEznpHrbjDrrI90RXQQNEe9m1Gw7OjvR0zbUKDo0upteox5CU/1PoWIhdV1pVod42qkeRLUl6i001W8VRIIljaGL+q/yjRomGgfzegilQwaX6KVqY48UpNIsFhRaMqZRT6NOLXhvnTDqMNCdk6BRn18oVDndbRYFrcCs28diIL3uP3PONtSazdw5TQE1H1pUgLvBeWv2rpvPqHg0NU5/aDAhCdcUpDbWkZpfM39dXbp1tUIoHUJImkmHvTQQQgYUSocQQukQQigdQgihdAghlA4hhFA6hBBKhxBC6RBCCKVDCKF0CCGE0iGEUDqEEELpEEIoHUIIpUMIIZQOIYTSIYQQSocQQukQQgilQwihdAghlA4hhFA6hBBKhxBCKB1CSNoRYwiGL7O/tXxUa1NLRuBHZYYumSMxFxNN5vnQRT2dF0brKL54TKyg2w2YZWJxTl/2qU6azayj2284b3XeOeuaOJEaJKXBmwsTcd8cTyQ6kq1ZbduWr2xl6g1f2Jd5mnD3qkWZDaN8cSzMKDZJ5okEuZEM1Fu+OpfrxXJVNA/JBVlgXHUUpJCLlCuCOTC0eGo85QrJR3IGQzwkCfw1pTrBVqlDLu3Q1LTUYX5japlqE4YNOON6LG/GXxPWaYzkFi2DWxuguOO1RQW1u+5d0cFcNnic3pc5pXOZBNIci4/xcbvSmRV7b8WoWYw21WJEGVKR0RiWoAAVSzQf66QkQi5fpo+EZFZrKrWYPKaQUdf4cSda66Oh97Xi5GiHDw4kXPOR7RXrE4wcpTOo3LZqUX5WjrvSezdG1SYidGMQzQmI3FgsHh/9ISOPRY2khNEaFkXlCErHYTE9gOJxGDMOIq0PetHDav5A6OVwe9C6D3JqYawonYuibO38IotlTsC34Hh8NZYiJKWYXRqNm0Zy0fHMPqQboutTB1GyDqDmugdFak9qKHZQQ3egZn7VW5g2SmckSqey0s24snaySHCdeb0OZ/8BnPXVZjoZNZf3IQrZLD/kMjXt9qIW/DYm3oCAXkNee93E795SvnrfSBDSsJfOXWsWFrfH4h80l5LKtTi76zA7+rsW05ksBiSNimP0S91u5NHdUM9ub7ZbnbwWZMhrm+5bVUfppBkzKytj4dj6SebkBqc2FW3vqTijKTibUmZmMvRrSGiemexE4dzlvW2XQLdPKNz/+w33bggpnYEQzGMLcpNB/KNO5RZUR2/CUd+Mo76BNRcywmhBkd2JfP8bUb/DYxg2BdvT/d6mISGdO55aOMGFsekqWoZDRi1GbsVBZjDPEXJOjSipqeaZbTfRGtT8t2yZV7Urna4VpZ10pj2yLDsjJyzz6u5QtWk4mtsxu4jZiZCLNtFRlO5tKN2/QhNtc+3owm2DeYNkWkhn+vqlN6i3P8ReZ+EIyrD/LOYUQi5fswwlfyvK2kYJbGPN3NWvDGRNaFCkM7168STs4w/Eyyzs7K7ozlzmA0IGrUl2CE2yjRJJSOTnmyuqDg4L6XzsqeWT42H4aZzgHDG9A2blHYiEpJ+CPP57ESp41qt/ZmvFmjeHlHRmrlvyPnP6xxQNIUOWXdDEBufctzfNW/lGWkonuhAc5Pr/7ETmY0sfZZoRMjzaYPhXI+rWHi/K/96lXIjuN+ncUb3o6kCCeTiw+/mQIyHD2D8mh6GIf3Dentg0f9XbAy6dO9ctnu3VLVe12anXNhFCRop8QqjiWfPyjZr5VVsuu3RmrF/6cXz6q1h7OsNPyIgX0M/U9K82z1/5Ur9LZ+b6RRO9d3+Dlb7AUBNCTtlEojc7PiNJt3zzwkf3Xbp0sLmy6qUPohn1MF/7QAjpwT31cMSimoqqf7po6cyq/nJBu7V/Bxb7DwwpIaSX8vnnZJObe/YDqBeUzozHH7rKYv7HmHMjw0gI6Zt5bJvT4FObKh491p10zvnlKXoBlgX+ZxQOIeSiUJ3mJfxJ9Dqa7hafI52OePyfUOm5npEjhFyCeT4axuOPdbvk9ObVjOrF98BDzzBghJB+amrN3PzAqhfO27wy0wWMEiGk35wjsvD8zavKSqciZQwTIaT/Wlly53mlM/N9dfl8HSghpJ8pSd0+2J10ou4uov55GCNCSD9Wdd49+w2FZ/969SMGiRDSf60re/a8zavUCl4f7XqLGCGEXBJm1mYaPNajdDqfFtUqhosQ0g98pab80d09SidiXNH+P0cD7HuMFyHkEmo5/6umYtXfdrfsHOlEXZbmtoWfx+i3GTpCSN+NI08GBwu/eL4ubs7/aovO11r8d8z+CqbijCQh5AK2aRXThzY/UPVENzWfXkinixnrlt0mzr6J0SkMKiGk++aUvCwWfrFm/ppd52lunb95dTbRxeUWabkFH1qOyQaGlxByWovoqKmV1xwsmHY+4fS+edUN0WsvOjJii7D2MkzmM+KEjNiqTSOksTZTMr+2seLh+guvfom9QXxs7fIxMZcsN9EKfGwiU4CQEUPU++cTLsOeip5i6L2j+quzvcpKVzah/uNqsgRTn2RvnoQMy2qNRzPqF6ayfnzRge9Fv3D3vWJ0GboVLlv/0HXqwwewpc9CPROYUIQMcdWIvK3RO4+D2PoX5z6y99JaY5exL/NU7WfiiQ+r109hq/8Vc65m8hEyVExjeyGD/+vFb9hSvnrL+e61SS/pnKlKvbN6yTRT/Qz2eg92MpmpSkja1Whex3/PQAHPbK6oeuXyuGygpHN2E2zt0lJxMgu7moXdzsawkElOyIBLpgkFfxuGGyWwjTXzVm+//BWoQZLO6cx5ek5wsH78LRLqLOx5FmbdyZeIEXI5JGNJNX0VTaWNkWhapWXT9or1iYFttaWBdM4m6q7CZ2TchuP5GAI0DbNuR5CuYJYhpM+SOagm2zD6ojrd1tGovz6787sBP6Z0lE533PHUwgkujE1X0TIc9lQT/SiOMpPZipDTajGiuzFW471skUC3bymv2pl2xzlUpHM20x5Zlp2RG95o4m7GadyEiN+EA78Ji4qY/cgIEMwxCOZVlOAd4mSHmO4Y1Rbu/OmSNe1pf+xDVTrnY3r14kk4/JvEOwjIICT9kIpdzWtEZGjKRSARi15+9W+Y2CHiXvWxjh1b5z5+YMie03CTTnfMrKyMhWPrJ0kgpUi4UpxeNLwBZxw9Lf8+nLFj9iaDzAkUx+ghyZ0ohntEZY+p7ppQuP/3F3PXL6WTxsz+1vJR7U12ncT8td7sWpz5JDOdjGhMxvhkRCOb5YH0Q0FrRrnai2bR25h8B02jveblDeS73UGsaPem+1a0jaBYjGzpXIjbn1w8NtPLJO/dZOd0MjLNJITt/dIpp3EI1VhGacQrxaPkHMHIAcjkHZSjvShBb3vn9jqMO3HvbKp49BjjROn0G2Vr5xdZLHOCmoxH9puA8I1HDKNnzsYjxBhqESI7CVHNZbSG3PWU42oaXT85iPETKBwQixz0YgdSP0eH7kBr0LJvoO91oXRIr5hV/eWCtrC92AW+2FtQ7FRGo0lXjEWjVa0Y4cdQii2aFk3NF/4a1y81ERikzlRrkbOPQxYY6nHk91pRiaRSi/Hj6jB0vjZIam0inlG7de7XGxk7SmdEEt0sKZKTK5lhbihhgfNBfmiWiwTLRWLlSeoRkmg6qklprnQ9UoLCVYB5DoVtFIYZmJOFZdlI5TgKXS6Ww3takB4ZUeq084FCFHRLmmgLjrk9qm1gdguOO4lz65IAahyiTVi7CfMb8dkGrFOPWDRZNN+FTZJwJ0IJmjqCxibUQlqYiygdkm5i++aSwrC144yEDzSjILRzf9mzmGSr+qxuN5SMXsgdnHNRNMwIwqCj5YxX3GYF+b43b5ojlA4hhPSLdHivCiFkQKF0CCGUDiGE0iGEEEqHEELpEEIIpUMIoXQIIZQOIYRQOoQQSocQQigdQgilQwghlA4hhNIhhFA6hBBC6RBCKB1CCKF0CCGUDiGEUDqEEEqHEELpEEIIpUMIoXQIIYTSIYSkHTGGYGgz7ZFl2fEsLdGYFXrxOSKaZ6p5gUm2N8tVlXwTy1HRHDMpxHQ2PpYtZkWGeSqSeWprlid6ep7QaDzv9P1hW3naOT8igb+mMw7IrAHbCE+tLx1q2nxqk9aG/bZgv3XYVgvmtGJ79fhck6prxTE3SvTnpBUrNznx9RpKa7sGJzKz8ms33beijak+tGFf5mnEnKfnBPtqJ45zgb/CmZYgVUpQfkvMXLGqFUfTKKjFKMRjDNMorJgnOSMpRsivzcirtbDZUeTcY5hzLJpGXGpRcT+m5mshryPehbVew2Nb95UckhUrPHPXoKcbpTMYlK2dXyTxeKmFbgKiPR4hL0VqTMCi8agdlCIlJp1WiyD9xwlIag+GB5HjDyDL78HfQXV6AHWyPcHhgnc2rViRZJgonSHH7U8uHptp7rrQ7FrURq5B7eRaM52MKE9EdMciyryGlpYFQkKk1SGIaR+apnvV5A18CbyOwrHbx/0bNfevOcooUTqDXlsRr6ilSCmidgOiNwWZ9FoszmeEhqWU6pDObyKNo9pSVEvaE41j3s7NFVUHGSFKp1+Y+c3KrER7/Y2B+ZvFuZswK/q7GX9FjA45VZoEtSB71VReNS87LJAddYWFu3bdu6KDwaF0eqy9WBC/IRA3FfGYGtVckIluPPOXHUJ66yFLquhujO7E1C5vul297KxZULWH0hmB0rnjqS/luWT7baruDmSOaTjz23HmxSwqZABkdEhMX0JRexGlcGuLtv56e8X6Fkpn2Elm4QQXxqbjm6cMpx7VYm7D7DiLABn8ghhdwJbXMFbjvWyRQLdvKa/aSekMJSorXdnEEx9GUs7C6UzHt8o0UbmC2ZsModrQQZTGFzFa40Q3vlCx8t8onTQj+pk67vVOHP0sSOYPIZkJzLpkGGnoCErnJhTTjUnTH22bv3I/pTPARLf9x3Jteqdk8CfyEYiGP72RkSKhPSitP0SpfTbIKKgZKo+FDDnplP3doiskEfwnqOUzmLyTvyoRkqIFX7y/QLl4xsL2H9QsWHeC0rkE7lqzsLgtFvukU52DoP6B8OIvIT0U6tRd1dtQ6d/Q7vy//Gre6sOUTi+YWf1QSdKH/zESjandzeeQCLk0AWki9t1ND37jEKVzGnevWpTZkhW7x8yXo0Yzg88nEdLPAhL5uXf6ZGx//rOD9WBrWkjnznWLrzXn7keb9E/5szYhA1DwxQ6h9vOPosnqzeWPvTUipDPl6cqM0Sfq/lhNyrHHu/irEyGDoh8fXYA2lfWt0vr97RXrE8NOOjMf+7NxYTyxRE3vZ62GkLQS0H6U/uqE08e3zVt5fMhLZ8b6B98vFluKXc7DHrKZwISka9NLmmCAv5ek+8bmhY/uG3LSKVu7tFSdfcVEP4/NBkxSQoaKfSx6JcdTYSz511vnPn4g7aXT9XDlX6qgGcX7aggZyvZpRaXhscyOxMPPL3q8Nu2kM7W6PD5KchZgS18Vvj2PkOHECZhhhR4oePxSfm7vV+mUPbHsbhG/Bp+/hulDyHCt+MgOqGJBzfyqLYMmnVnVXy5ol7a/FdN5/OmbkBEhHrS47EmXSCzf9ODapgGVTln10lkq9g/41JVMCUJGmHvM3jDnvrClfOW2i5FO3x45gOfKnljyZQx/SuEQMjKJLqWo+c1dLuhzK6fXNZ2oOdUm7Ruw1myGnRDSxQaXUfAnF3qvT5+bVzOql46H0X4Mp93CGBNCzjLKNov7P+qpU8I+SafrruJfYnQSo0sIOQ+7kmHw719c8MiRC0mnx2s60fuHIZyfUDiEkAswJebC56Y9uWz0hVY8r3Rmf2v5qLh3GzH6AcaTEHJBVG6Khf770c3CFyWdttZwLRpcNzKShJBee0d1Ro5lP9zjOt1d05m+bsmfOKf/yBASQvqMiXm1T26pWPWT92b1dCH5tlWL8jOy3O9VdDyjRwi5SN50GQU3nvwpvccLyZmZ7n9QOISQS+TqsL1uQXcLzpDO1OryHAzmMl6EkEsFbafFc56eE/QonSyf/Rm0s0YzXISQS7eOTj5wYsInepSOqnyCkSKE9BfOzn1s6izp6AyGiRDSj9WdO88vncpKZyZ8cpwQ0o/OsavOK51pExsK+RJ1Qkh/YqbFZ7/+4j3pFLYkmxkiQki/VnTEWqL/upXOT5esaYeWGhkmQkg/WufoeZtXqaqQyG8YJUJIPzav/l+P0lHRf2WYCCH9V9GRf+1ZOoH9S+qN74QQcukkEqbf71E6L8xb9Tuo6ReMFSHkkptWYhu2zV+5v0fpdDXCvsraDiHkEoWTNNW/6W7ZOdLZ/MCqF0ztOwwbIeRiUZM1W8qrdvZKOhFhGFsGV+1n6AghF8FrYSyj8nwLu5VO9EZ3r+4zaGp1MH6EkF43q8yavco9W+d+vbFP0omIugzFh+fz+g4hpJcknMrnz9esuqB0UuKpWPX3on4xY0kIuUAdB3UU/eILFat+cKE1L9iX+eaK1Y+ZyeJoowwsIaSbNlWHivvCCxUr/7k3q/e6L/Oy6iWfxhrYqGYzyoSQlG9EmlTtM5vLV/2sZy/1sofP06mpWPV9FZuJj77NUBNCYJKdztltFxJOn5tXp/NCxeqXk06nYm/PMuKEjGi+nZUTuz31FEMf6XXz6qw6lU5/YskXnNMqTBUx/oSMGE5AGX9R80DV+r5ViuwSpdPFjMcfukpiIXaudzMtCBnmrSmR76K8L6q5f83RvrfE+kk6J5n+xNJPOTXUerSUSUPIsOM1M11a88DKn160sC7mQnJPbHmg6lmXUXgDtvyXmGxgGhEyHGo2dgxVkaXuQMGNlyKcs+mXms7p3LVmYXFHRvxLOOTF/HmdkCHZjGqCDR7PlMyvbax4uL5fttnfzavuuOOphRNcMvbnGJ2LbY9iUhKS5rIxqYtkk5FIrHx+0eO1/bvtAZDOSWZWP1TiJXzQRB/EHoqZtISknW6O4L91LkOqNt23qu7yCG0ApXOSqdXlOdk26rMqvhw7m8aEJmRQ21Bmar8Ucetz25L/J9UbzGWtRQ2CdE7nzieXXG9e/xuOZB52PJo5gJABbEKpPe1CW7NpwerfDtx+B1k67zW9vlmZFXbUfUpNotrPLGYJQi5bzWY7Svr6Vm359vaK9S0DL7s0kc7pTF+37GZ1/nMqOgeTVzOXEHLJJX2nqDwThvKdrQtWvTa4h5KG0jlDQOuX3uDM5uDIPgsJfZC5h5BeswtFfIN5/3TN/DW70sd/aS6dbgVkei8O8XrmKUK6F406+e7FPIBJ6fTAzLWLb/SBu9vEZuNoZ/DmQzIyW03WjGbTL53oc+L9j1+Yv/r1IXDMQ1M6pzPtkWXZsVybjqOeJSbRReiPRP0iM0uSYagZL1Gf4CobUVo35raFmy/3T9yUTi+4/cnFY+OhzFZ1sztrQjqemZUM4erMXlN5zqk+F29PPN/fdwhTOpeB6DEMTcanOpXpOOUy1IZuxUlmMDeTtCuQYkl8Se7GWI33skVNa2oWVO0ZZk3C4S+ds5n9reWjWloTHw7ETcUZT0dK/ztUV69glieDIJlDEMuvUfq2m2hNskm3bFu+snV4V9xGoHS6rQ2tXfIB5ww1IHcTwnIzZt2Eb5xxLBak/wqbvItStgOj+HOvqiZ+tbn8sbdGXhwonfNStnZ+kQXxGzprRDYFs26Q6CI1fykjPZPA3+soXdGdvztRg9mVDPxLv5q3+jBDQ+n0manV5fFsl3W9mvuQeLneVK5BGK9Vk2sRuDxGaETVXOpSclF7HSXmdRP3e/HJHcGh0bs3rViRZIQonQGpGUk8XipeSzVVK9IpaLSXQkwfwHQuIzQEC4hIu4rtF9Ndoqi1mOzBcI+EsqdmftVbGGdX25ROWuZcnbH2oYnm/CRxepUTudKbvwqRnohMOwH5dpKZjkPYAwZrIJPFotrIQeT2d5D192O4X6JxjcY9xoO3NldUHWSkKJ1hyczKylj7uIaxcZecbD6YoGoQkkJMUoLCUayiJUif4uhXNowXMGI9cgI5+RiGx9DsrTW1WuTqI8ju75q6fWr+gA+S+7buKzkkK1awi2xKh1yI6LpSbiK/OJmRLFbTEme+GN/OVyD1SlDIovG8SEyQVfRq2Gysk4+kzsP8bMzPRTLnp2utqus+lUaMNmK8BcfejGE9ZNuK+S0SXUdRLINMcA5HvGptIHbMh2FtIqa1kwoOHttw74aQuYTSIWnG3asWZTbFkzkaCwot1GyJabb5SEou61Tu0JioP+PieEpmdqrnEAeR+eiSqmnbqYzkQ3N6Rk8gyFINaEKekoGXVon5NgeRaFJaQ+uobw3Cpu0V6xNMnZEjnf8vwABBpTjb4noIQQAAAABJRU5ErkJggg==";
+
+const logoTextureLoader = new THREE.TextureLoader();
+const logoTexture = logoTextureLoader.load(TERRAWAVE_LOGO_DATA_URI);
+logoTexture.colorSpace = THREE.SRGBColorSpace;
+const LOGO_ASPECT = 285 / 272;
+const logoMat = new THREE.MeshBasicMaterial({
+  map: logoTexture,
+  transparent: true,
+  depthWrite: false,
+  toneMapped: false
+});
+
+// ---------- Build the bin scene (shared between AR and fallback) ----------
+// All dimensions are real feet (1 unit = 1 ft): 36ft diameter, 24ft eave — a real 30,000 bu bin.
+function buildBinScene(scale) {
+  const group = new THREE.Group();
+
+  const BIN_RADIUS = 18.0;
+  const BIN_HEIGHT = 24.0;
+  const BIN_Y_BASE = 0;
+
+  // ---- Bin wall ----
+  const wallMat = new THREE.MeshPhysicalMaterial({
+    color: 0xB7BEC7, metalness: 0.6, roughness: 0.35,
+    transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false
+  });
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(BIN_RADIUS, BIN_RADIUS, BIN_HEIGHT, 48, 1, true), wallMat);
+  wall.position.y = BIN_Y_BASE + BIN_HEIGHT / 2;
+  group.add(wall);
+
+  const ridgeMat = new THREE.LineBasicMaterial({ color: 0x8A919C, transparent: true, opacity: 0.35 });
+  for (let i = 0; i < 32; i++) {
+    const angle = (i / 32) * Math.PI * 2;
+    const x = Math.cos(angle) * BIN_RADIUS;
+    const z = Math.sin(angle) * BIN_RADIUS;
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x, BIN_Y_BASE, z), new THREE.Vector3(x, BIN_Y_BASE + BIN_HEIGHT, z)
+    ]);
+    group.add(new THREE.Line(geo, ridgeMat));
+  }
+
+  // ---- Roof: flat-topped cone (real bins don't come to a sharp point) ----
+  const ROOF_TOP_RADIUS = BIN_RADIUS * 0.11;
+  const ROOF_HEIGHT = BIN_RADIUS * 0.45;
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x9AA1AA, metalness: 0.65, roughness: 0.3, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(ROOF_TOP_RADIUS, BIN_RADIUS * 1.02, ROOF_HEIGHT, 48, 1, true), roofMat);
+  roof.position.y = BIN_Y_BASE + BIN_HEIGHT + ROOF_HEIGHT / 2;
+  group.add(roof);
+
+  const roofCap = new THREE.Mesh(new THREE.CircleGeometry(ROOF_TOP_RADIUS, 48), roofMat);
+  roofCap.rotation.x = -Math.PI / 2;
+  roofCap.position.y = BIN_Y_BASE + BIN_HEIGHT + ROOF_HEIGHT;
+  group.add(roofCap);
+
+  const baseRim = new THREE.Mesh(
+    new THREE.TorusGeometry(BIN_RADIUS, 0.06, 8, 48),
+    new THREE.MeshStandardMaterial({ color: 0x6B7280, metalness: 0.7, roughness: 0.3 })
+  );
+  baseRim.rotation.x = Math.PI / 2;
+  group.add(baseRim);
+
+  // ---------- TerraWave hardware ----------
+  const hardwareGroup = new THREE.Group();
+  group.add(hardwareGroup);
+
+  // Rooftop IoT gateway + solar panel — mounted flush on the sloped roof using the
+  // roof's real surface normal, positioned right next to the flat lid at the top.
+  const ROOF_PITCH = Math.atan2(ROOF_HEIGHT, (BIN_RADIUS * 1.02 - ROOF_TOP_RADIUS));
+  const GW_ANGLE = Math.PI * 0.35;
+  const GW_T = 0.92;
+  const gwRadius = THREE.MathUtils.lerp(BIN_RADIUS * 1.02, ROOF_TOP_RADIUS, GW_T);
+  const gwY = BIN_Y_BASE + BIN_HEIGHT + ROOF_HEIGHT * GW_T;
+  const gwX = Math.cos(GW_ANGLE) * gwRadius;
+  const gwZ = Math.sin(GW_ANGLE) * gwRadius;
+
+  const gwRadialDir = new THREE.Vector3(Math.cos(GW_ANGLE), 0, Math.sin(GW_ANGLE));
+  const gwTangentDir = new THREE.Vector3(-Math.sin(GW_ANGLE), 0, Math.cos(GW_ANGLE));
+  const gwUp = new THREE.Vector3(0, 1, 0);
+  const gwNormal = new THREE.Vector3()
+    .addScaledVector(gwRadialDir, Math.sin(ROOF_PITCH))
+    .addScaledVector(gwUp, Math.cos(ROOF_PITCH))
+    .normalize();
+  const gwSlopeDownDir = new THREE.Vector3()
+    .addScaledVector(gwRadialDir, Math.cos(ROOF_PITCH))
+    .addScaledVector(gwUp, -Math.sin(ROOF_PITCH))
+    .normalize();
+
+  const gatewayGroup = new THREE.Group();
+  gatewayGroup.position.set(gwX, gwY, gwZ);
+  const gwBasis = new THREE.Matrix4().makeBasis(gwTangentDir, gwNormal, gwSlopeDownDir);
+  gatewayGroup.quaternion.setFromRotationMatrix(gwBasis);
+  hardwareGroup.add(gatewayGroup);
+
+  const gwBoxMat = new THREE.MeshStandardMaterial({ color: 0x1F2126, roughness: 0.75, metalness: 0.15 });
+  const BOX_W = 0.9, BOX_H = 0.55, BOX_D = 1.1;
+  const gwBox = new THREE.Mesh(new THREE.BoxGeometry(BOX_W, BOX_H, BOX_D), gwBoxMat);
+  gwBox.position.set(0, BOX_H / 2, 0);
+  gatewayGroup.add(gwBox);
+
+  const solarMat = new THREE.MeshStandardMaterial({ color: 0x121B2E, roughness: 0.3, metalness: 0.5 });
+  const solarFrameMat = new THREE.MeshStandardMaterial({ color: 0xC5C8CE, roughness: 0.5, metalness: 0.6 });
+  const SOLAR_TILT = 22 * Math.PI / 180;
+  const PANEL_W = 1.15;
+  const PANEL_D = 1.35;
+  const HINGE_Z = BOX_D / 2;
+  const solarGroup = new THREE.Group();
+  solarGroup.position.set(0, BOX_H, HINGE_Z);
+  solarGroup.rotation.x = SOLAR_TILT;
+  const solarPanel = new THREE.Mesh(new THREE.BoxGeometry(PANEL_W, 0.05, PANEL_D), solarMat);
+  solarPanel.position.z = -PANEL_D / 2;
+  solarGroup.add(solarPanel);
+  const solarFrame = new THREE.Mesh(new THREE.BoxGeometry(PANEL_W + 0.06, 0.08, PANEL_D + 0.06), solarFrameMat);
+  solarFrame.position.set(0, -0.02, -PANEL_D / 2);
+  solarGroup.add(solarFrame);
+  gatewayGroup.add(solarGroup);
+
+  const antennaMat = new THREE.MeshStandardMaterial({ color: 0x0A0A0A, roughness: 0.7, metalness: 0.15 });
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.9, 10), antennaMat);
+  antenna.position.set(BOX_W / 2 - 0.12, BOX_H + 0.45, BOX_D / 2 + 0.09);
+  gatewayGroup.add(antenna);
+
+  // Radar level sensor — mounted on the flat lid, right at the flat/cone edge, pointing straight down
+  const LID_Y = BIN_Y_BASE + BIN_HEIGHT + ROOF_HEIGHT;
+  const RADAR_MOUNT_RADIUS = ROOF_TOP_RADIUS * 0.92;
+  const RADAR_ANGLE = Math.PI * 0.9;
+  const radarX = Math.cos(RADAR_ANGLE) * RADAR_MOUNT_RADIUS;
+  const radarZ = Math.sin(RADAR_ANGLE) * RADAR_MOUNT_RADIUS;
+
+  const radarGroup = new THREE.Group();
+  radarGroup.position.set(radarX, LID_Y, radarZ);
+  hardwareGroup.add(radarGroup);
+
+  const mountMat = new THREE.MeshStandardMaterial({ color: 0xC7CBD1, roughness: 0.4, metalness: 0.7 });
+  const mountFlange = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.15, 20), mountMat);
+  mountFlange.position.y = 0.08;
+  radarGroup.add(mountFlange);
+
+  const MOUNT_PIPE_LENGTH = 2.2;
+  const mountPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, MOUNT_PIPE_LENGTH, 10), mountMat);
+  mountPipe.position.y = -MOUNT_PIPE_LENGTH / 2;
+  radarGroup.add(mountPipe);
+
+  const sensorMat = new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.55, metalness: 0.3 });
+  const sensorHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.85, 20), sensorMat);
+  sensorHousing.position.y = -MOUNT_PIPE_LENGTH - 0.42;
+  radarGroup.add(sensorHousing);
+
+  const sensorCapMat = new THREE.MeshStandardMaterial({ color: 0xEDEAE0, roughness: 0.4, metalness: 0.2 });
+  const sensorCap = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.1, 20), sensorCapMat);
+  sensorCap.position.y = -MOUNT_PIPE_LENGTH - 0.02;
+  radarGroup.add(sensorCap);
+
+  // Wall-mounted TerraWave patch sensors — 6 units, varied heights, branded with the logo
+  const patchMat = new THREE.MeshStandardMaterial({ color: 0x2A2E33, roughness: 0.6, metalness: 0.3 });
+  const patchLightMat = new THREE.MeshStandardMaterial({
+    color: 0x2FD3C9, emissive: 0x2FD3C9, emissiveIntensity: 0.8, roughness: 0.4
+  });
+  const patchPositions = [
+    { angle: 10 * Math.PI / 180, heightFrac: 0.92 },
+    { angle: 100 * Math.PI / 180, heightFrac: 0.08 },
+    { angle: 175 * Math.PI / 180, heightFrac: 0.35 },
+    { angle: 230 * Math.PI / 180, heightFrac: 0.55 },
+    { angle: 290 * Math.PI / 180, heightFrac: 0.70 },
+    { angle: 340 * Math.PI / 180, heightFrac: 0.20 }
+  ];
+  const patchMeshes = [];
+  patchPositions.forEach((p) => {
+    const patchGroup = new THREE.Group();
+    const pRadius = BIN_RADIUS + 0.08;
+    patchGroup.position.set(Math.cos(p.angle) * pRadius, BIN_Y_BASE + BIN_HEIGHT * p.heightFrac, Math.sin(p.angle) * pRadius);
+    patchGroup.rotation.y = -p.angle + Math.PI / 2;
+    group.add(patchGroup);
+
+    const patchBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.1), patchMat);
+    patchGroup.add(patchBody);
+
+    const logoHeight = 0.28;
+    const logoWidth = logoHeight * LOGO_ASPECT;
+    const patchLogo = new THREE.Mesh(new THREE.PlaneGeometry(logoWidth, logoHeight), logoMat);
+    patchLogo.position.set(0, -0.08, 0.052);
+    patchLogo.renderOrder = 5;
+    patchGroup.add(patchLogo);
+
+    const patchLight = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), patchLightMat);
+    patchLight.position.set(0, 0.25, 0.07);
+    patchGroup.add(patchLight);
+    patchMeshes.push(patchLight);
+  });
+
+  // ---------- Grain fill ----------
+  const grainHeight = BIN_HEIGHT * 0.7;
+  const grainMat = new THREE.MeshStandardMaterial({
+    color: 0xD9A03C, roughness: 0.9, metalness: 0.0,
+    transparent: true, opacity: 0.5, depthWrite: false
+  });
+  const grain = new THREE.Mesh(new THREE.CylinderGeometry(BIN_RADIUS * 0.97, BIN_RADIUS * 0.97, grainHeight, 48, 1, true), grainMat);
+  grain.position.y = BIN_Y_BASE + grainHeight / 2 + 0.05;
+  grain.renderOrder = 1;
+  group.add(grain);
+
+  const GRAIN_TOP_RADIUS = BIN_RADIUS * 0.97;
+  const ANGLE_OF_REPOSE = 28 * Math.PI / 180;
+  const grainConeHeight = GRAIN_TOP_RADIUS * Math.tan(ANGLE_OF_REPOSE);
+  const grainTop = new THREE.Mesh(new THREE.ConeGeometry(GRAIN_TOP_RADIUS, grainConeHeight, 48), grainMat);
+  grainTop.position.y = BIN_Y_BASE + grainHeight + 0.05 + grainConeHeight / 2;
+  grainTop.renderOrder = 1;
+  group.add(grainTop);
+
+  // ---------- Cable + temperature/moisture nodes ----------
+  const CABLE_OFFSET_X = 1.8;
+  const CABLE_OFFSET_Z = -0.9;
+  const NODE_SPACING = 2;          // fixed real-world constant, does not scale with bin size
+  const NODE_START_HEIGHT = 2;
+  const HEADSPACE_EXPOSURE = 2.5;
+
+  const CABLE_RADIAL_DIST = Math.sqrt(CABLE_OFFSET_X * CABLE_OFFSET_X + CABLE_OFFSET_Z * CABLE_OFFSET_Z);
+  const CABLE_LOCAL_SURFACE_Y = BIN_Y_BASE + grainHeight + 0.05
+    + grainConeHeight * (1 - CABLE_RADIAL_DIST / GRAIN_TOP_RADIUS);
+
+  const CABLE_BOTTOM = BIN_Y_BASE + NODE_START_HEIGHT;
+  const CABLE_TOP = CABLE_LOCAL_SURFACE_Y + HEADSPACE_EXPOSURE;
+  const NODE_COUNT = Math.floor((CABLE_TOP - CABLE_BOTTOM) / NODE_SPACING) + 1;
+
+  const cableGroup = new THREE.Group();
+  group.add(cableGroup);
+
+  const cableMat = new THREE.MeshStandardMaterial({ color: 0x2B2F36, metalness: 0.4, roughness: 0.6 });
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, CABLE_TOP - CABLE_BOTTOM, 12), cableMat);
+  cable.position.set(CABLE_OFFSET_X, (CABLE_TOP + CABLE_BOTTOM) / 2, CABLE_OFFSET_Z);
+  cableGroup.add(cable);
+
+  const nodeMeshes = [];
+  const sensingSpheres = [];
+  const SENSING_RADIUS = NODE_SPACING * 0.48;
+  for (let i = 0; i < NODE_COUNT; i++) {
+    const y = CABLE_BOTTOM + i * NODE_SPACING;
+    const nodeMat = new THREE.MeshStandardMaterial({
+      color: 0x2FD3C9, emissive: 0x2FD3C9, emissiveIntensity: 0.9, roughness: 0.4
+    });
+    const node = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 20), nodeMat);
+    node.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
+    cableGroup.add(node);
+    nodeMeshes.push(node);
+
+    const sensingMat = new THREE.MeshBasicMaterial({
+      color: 0x6FF5EC, transparent: true, opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const sensingSphere = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 24, 24), sensingMat);
+    sensingSphere.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
+    cableGroup.add(sensingSphere);
+    sensingSpheres.push(sensingSphere);
+
+    const sensingEdgeMat = new THREE.MeshBasicMaterial({
+      color: 0x9FFBF4, transparent: true, opacity: 0.4, wireframe: true, depthWrite: false
+    });
+    const sensingEdge = new THREE.Mesh(new THREE.SphereGeometry(SENSING_RADIUS, 16, 12), sensingEdgeMat);
+    sensingEdge.position.set(CABLE_OFFSET_X, y, CABLE_OFFSET_Z);
+    cableGroup.add(sensingEdge);
+  }
+
+  // ---------- Hotspot (spoilage blob) ----------
+  const hotspotGroup = new THREE.Group();
+  hotspotGroup.position.set(-4.0, BIN_Y_BASE + 8, 3.76);
+  group.add(hotspotGroup);
+
+  const blobGeo = new THREE.IcosahedronGeometry(5.4, 3);
+  const posAttr = blobGeo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < posAttr.count; i++) {
+    v.fromBufferAttribute(posAttr, i);
+    const n = v.clone().normalize();
+    const noise = 0.85 + 0.3 * Math.sin(n.x * 5 + n.y * 4) * Math.cos(n.z * 3 + n.y * 6);
+    v.multiplyScalar(noise);
+    posAttr.setXYZ(i, v.x, v.y, v.z);
+  }
+  blobGeo.computeVertexNormals();
+
+  const blobMat = new THREE.MeshStandardMaterial({
+    color: 0xFF4D2E, emissive: 0xFF3A1E, emissiveIntensity: 0.55,
+    roughness: 0.55, transparent: true, opacity: 0, depthWrite: false
+  });
+  const blob = new THREE.Mesh(blobGeo, blobMat);
+  blob.renderOrder = 10;
+  hotspotGroup.add(blob);
+
+  const hotLight = new THREE.PointLight(0xFF5A32, 0, 4.2);
+  hotspotGroup.add(hotLight);
+
+  group.scale.setScalar(scale);
+
+  return { group, nodeMeshes, sensingSpheres, patchMeshes, blobMat, hotLight, hotspotGroup };
+}
+
+// ---------- Mode toggle logic (shared) ----------
+let currentScene = null;
+let mode = 'cable';
+const fade = { current: 0, target: 0 };
+
+function setMode(next) {
+  mode = next;
+  btnCable.classList.toggle('active', mode === 'cable');
+  btnTruth.classList.toggle('active', mode === 'truth');
+  fade.target = mode === 'truth' ? 0.82 : 0.0;
+  if (mode === 'cable') {
+    statusText.textContent = 'All nodes normal';
+    statusText.className = 'status ok';
+    statusSub.textContent = 'Temp/moisture normal, ~14°C';
+  } else {
+    statusText.textContent = 'Hotspot undetected';
+    statusText.className = 'status warn';
+    statusSub.textContent = 'Cable reads normal — spoilage sits off-line';
+  }
+}
+btnCable.addEventListener('click', () => setMode('cable'));
+btnTruth.addEventListener('click', () => setMode('truth'));
+
+function showUI() {
+  legend.style.display = 'flex';
+  readout.style.display = 'block';
+  bottomControls.style.display = 'flex';
+  setMode('cable');
+}
+
+// ---------- AR path ----------
+let reticle, hitTestSource = null, hitTestSourceRequested = false;
+let placed = false;
+
+function initReticle() {
+  const geo = new THREE.RingGeometry(0.4, 0.5, 32).rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xE8B04B });
+  reticle = new THREE.Mesh(geo, mat);
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  scene.add(reticle);
+}
+
+function onSelect() {
+  if (placed || !reticle.visible) return;
+  const AR_SCALE = 1.0; // life-size — 1 scene unit = 1 real foot
+  const built = buildBinScene(AR_SCALE);
+  built.group.position.setFromMatrixPosition(reticle.matrix);
+  scene.add(built.group);
+  currentScene = built;
+  placed = true;
+  reticle.visible = false;
+  reticleHint.style.display = 'none';
+  showUI();
+}
+
+function startARFlow() {
+  initReticle();
+  const sessionInit = {
+    requiredFeatures: ['hit-test'],
+    optionalFeatures: ['dom-overlay'],
+    domOverlay: { root: document.body }
+  };
+  const button = ARButton.createButton(renderer, sessionInit);
+  button.style.display = 'none';
+  document.body.appendChild(button);
+
+  arButton.addEventListener('click', () => button.click());
+
+  renderer.xr.addEventListener('sessionstart', () => {
+    startScreen.style.display = 'none';
+    reticleHint.style.display = 'block';
+    exitArDiv.style.display = 'block';
+  });
+
+  renderer.xr.addEventListener('sessionend', () => {
+    location.reload();
+  });
+
+  exitBtn.addEventListener('click', () => {
+    const session = renderer.xr.getSession();
+    if (session) session.end();
+  });
+
+  const controller = renderer.xr.getController(0);
+  controller.addEventListener('select', onSelect);
+  scene.add(controller);
+
+  renderer.setAnimationLoop((timestamp, frame) => {
+    if (frame) {
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      const session = renderer.xr.getSession();
+
+      if (!hitTestSourceRequested) {
+        session.requestReferenceSpace('viewer').then((refSpace) => {
+          session.requestHitTestSource({ space: refSpace }).then((source) => {
+            hitTestSource = source;
+          });
+        });
+        session.addEventListener('end', () => {
+          hitTestSourceRequested = false;
+          hitTestSource = null;
+        });
+        hitTestSourceRequested = true;
+      }
+
+      if (hitTestSource && !placed) {
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        if (hitTestResults.length > 0) {
+          const hit = hitTestResults[0];
+          reticle.visible = true;
+          reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+        } else {
+          reticle.visible = false;
+        }
+      }
+    }
+    animateScene();
+    renderer.render(scene, camera);
+  });
+}
+
+// ---------- Fallback path (non-AR 3D preview) ----------
+function startFallback() {
+  fallbackBanner.style.display = 'block';
+  startScreen.style.display = 'none';
+
+  camera.position.set(38, 26, 44);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, 9, 0);
+  controls.minDistance = 15;
+  controls.maxDistance = 130;
+  controls.maxPolarAngle = Math.PI * 0.52;
+
+  scene.background = new THREE.Color(0x0B0F14);
+  scene.fog = new THREE.Fog(0x0B0F14, 70, 140);
+
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(70, 48),
+    new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.95, metalness: 0.05 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+
+  const built = buildBinScene(1.0);
+  scene.add(built.group);
+  currentScene = built;
+  showUI();
+
+  function loop() {
+    requestAnimationFrame(loop);
+    controls.update();
+    animateScene();
+    renderer.render(scene, camera);
+  }
+  loop();
+}
+
+function animateScene() {
+  if (!currentScene) return;
+  const t = performance.now() / 1000;
+
+  currentScene.nodeMeshes.forEach((node, i) => {
+    node.material.emissiveIntensity = 0.7 + 0.3 * Math.sin(t * 1.5 + i * 0.6);
+  });
+
+  currentScene.sensingSpheres.forEach((sphere, i) => {
+    sphere.material.opacity = 0.22 + 0.08 * Math.sin(t * 1.5 + i * 0.6);
+  });
+
+  currentScene.patchMeshes.forEach((light, i) => {
+    light.material.emissiveIntensity = 0.6 + 0.35 * Math.sin(t * 1.2 + i * 0.9);
+  });
+
+  fade.current += (fade.target - fade.current) * 0.06;
+  currentScene.blobMat.opacity = fade.current;
+  currentScene.hotLight.intensity = 1.2 * (fade.current / 0.82);
+  currentScene.hotspotGroup.scale.setScalar(1 + Math.sin(t * 0.8) * 0.02);
+}
+
+// ---------- Device capability check ----------
+async function checkSupport() {
+  if (navigator.xr && navigator.xr.isSessionSupported) {
+    try {
+      arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+    } catch (e) {
+      arSupported = false;
+    }
+  }
+
+  if (arSupported) {
+    arButton.textContent = 'Start AR';
+    arButton.disabled = false;
+    deviceNote.textContent = '';
+    startARFlow();
+  } else {
+    arButton.textContent = 'View 3D preview';
+    arButton.disabled = false;
+    deviceNote.textContent = 'AR needs Chrome on Android. On this device you\u2019ll get a rotatable 3D preview instead.';
+    arButton.addEventListener('click', startFallback);
+  }
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+checkSupport();
+</script>
+
+</body>
+</html>
