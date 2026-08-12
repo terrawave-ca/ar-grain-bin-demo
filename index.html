@@ -171,6 +171,10 @@ function isIOS() {
 
 let arSupported = false;
 
+// The scene is modelled in FEET (1 unit = 1 ft), but both WebXR and USDZ/Quick Look
+// work in METRES — so anything placed in the real world scales by this factor.
+const FEET_TO_METERS = 0.3048;
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 200);
 
@@ -234,7 +238,10 @@ function buildBinScene(scale, exportSafe = false) {
   // ---- Roof: flat-topped cone (real bins don't come to a sharp point) ----
   const ROOF_TOP_RADIUS = BIN_RADIUS * 0.11;
   const ROOF_HEIGHT = BIN_RADIUS * 0.45;
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x9AA1AA, metalness: 0.65, roughness: 0.3, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: 0x9AA1AA, metalness: 0.65, roughness: 0.3,
+    transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false
+  });
   const roof = new THREE.Mesh(new THREE.CylinderGeometry(ROOF_TOP_RADIUS, BIN_RADIUS * 1.02, ROOF_HEIGHT, 48, 1, true), roofMat);
   roof.position.y = BIN_Y_BASE + BIN_HEIGHT + ROOF_HEIGHT / 2;
   group.add(roof);
@@ -250,6 +257,36 @@ function buildBinScene(scale, exportSafe = false) {
   );
   baseRim.rotation.x = Math.PI / 2;
   group.add(baseRim);
+
+  // ---- TerraWave logo on the bin wall ----
+  // Built from geometry (4 stacked ellipses) rather than a texture, so it survives
+  // USDZ export cleanly. Proportions measured directly from the TerraWave icon.
+  const LOGO_ANGLE = Math.PI * 0.25;          // which way the logo faces
+  const LOGO_CENTER_Y = BIN_HEIGHT * 0.6;
+  const LOGO_HALF_WIDTH = 2.6;                // ft — logo is ~5.2ft wide overall
+  const logoWallMat = new THREE.MeshStandardMaterial({
+    color: 0x379B6E, roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide
+  });
+  const wallLogoGroup = new THREE.Group();
+  // Stand it slightly proud of the wall so the flat logo clears the wall's curve.
+  const logoRadius = BIN_RADIUS + 0.25;
+  wallLogoGroup.position.set(Math.cos(LOGO_ANGLE) * logoRadius, LOGO_CENTER_Y, Math.sin(LOGO_ANGLE) * logoRadius);
+  wallLogoGroup.rotation.y = -LOGO_ANGLE + Math.PI / 2;
+  group.add(wallLogoGroup);
+
+  // rx / ry / y offset, as fractions of LOGO_HALF_WIDTH (top ellipse first)
+  const logoEllipses = [
+    { rx: 0.964, ry: 0.050, y: 0.932 },
+    { rx: 0.982, ry: 0.101, y: 0.529 },
+    { rx: 1.000, ry: 0.205, y: 0.029 },
+    { rx: 1.000, ry: 0.302, y: -0.673 }
+  ];
+  logoEllipses.forEach((e) => {
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), logoWallMat);
+    disc.scale.set(e.rx * LOGO_HALF_WIDTH, e.ry * LOGO_HALF_WIDTH, 1);
+    disc.position.set(0, e.y * LOGO_HALF_WIDTH, 0);
+    wallLogoGroup.add(disc);
+  });
 
   // ---------- TerraWave hardware ----------
   const hardwareGroup = new THREE.Group();
@@ -462,7 +499,7 @@ function buildBinScene(scale, exportSafe = false) {
 
   // ---------- Hotspot (spoilage blob) ----------
   const hotspotGroup = new THREE.Group();
-  hotspotGroup.position.set(-4.0, BIN_Y_BASE + 8, 3.76);
+  hotspotGroup.position.set(-4.0, BIN_Y_BASE + 12, 3.76);
   group.add(hotspotGroup);
 
   const blobGeo = new THREE.IcosahedronGeometry(5.4, 3);
@@ -477,10 +514,17 @@ function buildBinScene(scale, exportSafe = false) {
   }
   blobGeo.computeVertexNormals();
 
-  const blobMat = new THREE.MeshStandardMaterial({
-    color: 0xFF4D2E, emissive: 0xFF3A1E, emissiveIntensity: 0.55,
-    roughness: 0.55, transparent: true, opacity: 0.82, depthWrite: false
-  });
+  const blobMat = exportSafe
+    ? new THREE.MeshStandardMaterial({
+        // Opaque on purpose: Quick Look sorts transparent surfaces by distance with
+        // no renderOrder control, which hid the blob from certain angles.
+        color: 0xFF4D2E, emissive: 0xFF3A1E, emissiveIntensity: 0.45,
+        roughness: 0.55, metalness: 0.0, transparent: false, opacity: 1.0
+      })
+    : new THREE.MeshStandardMaterial({
+        color: 0xFF4D2E, emissive: 0xFF3A1E, emissiveIntensity: 0.55,
+        roughness: 0.55, transparent: true, opacity: 0.82, depthWrite: false
+      });
   const blob = new THREE.Mesh(blobGeo, blobMat);
   blob.renderOrder = 10;
   hotspotGroup.add(blob);
@@ -502,6 +546,8 @@ let currentScene = null;
 // ---------- AR path ----------
 let reticle, hitTestSource = null, hitTestSourceRequested = false;
 let placed = false;
+let userScale = 1.0;
+const SCALE_MIN = 0.05, SCALE_MAX = 2.5;
 
 function initReticle() {
   const geo = new THREE.RingGeometry(0.4, 0.5, 32).rotateX(-Math.PI / 2);
@@ -514,18 +560,100 @@ function initReticle() {
 
 function onSelect() {
   if (placed || !reticle.visible) return;
-  const AR_SCALE = 1.0; // life-size — 1 scene unit = 1 real foot
-  const built = buildBinScene(AR_SCALE);
+  // WebXR reference space is in METRES, but the scene is modelled in feet,
+  // so life-size means scaling by the foot->metre factor.
+  const built = buildBinScene(FEET_TO_METERS * userScale);
   built.group.position.setFromMatrixPosition(reticle.matrix);
   scene.add(built.group);
   currentScene = built;
   placed = true;
   reticle.visible = false;
   reticleHint.style.display = 'none';
+  showGestureHint();
+}
+
+// ---------- AR gestures: pinch to scale, twist to rotate, drag to move ----------
+
+function showGestureHint() {
+  reticleHint.textContent = 'Pinch to resize · drag to move';
+  reticleHint.style.display = 'block';
+  setTimeout(() => { reticleHint.style.display = 'none'; }, 5000);
+}
+
+function setupARGestures() {
+  const el = document.body;
+  let gesture = null;
+  let startDist = 0, startTwist = 0, baseScale = 1, baseYaw = 0;
+  let lastX = 0, lastY = 0;
+
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const twist = (a, b) => Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  el.addEventListener('touchstart', (e) => {
+    if (!placed || !currentScene) return;
+    if (e.touches.length === 2) {
+      gesture = 'pinch';
+      startDist = dist(e.touches[0], e.touches[1]);
+      startTwist = twist(e.touches[0], e.touches[1]);
+      baseScale = userScale;
+      baseYaw = currentScene.group.rotation.y;
+    } else if (e.touches.length === 1) {
+      gesture = 'drag';
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!placed || !currentScene) return;
+
+    if (gesture === 'pinch' && e.touches.length === 2) {
+      const d = dist(e.touches[0], e.touches[1]);
+      const a = twist(e.touches[0], e.touches[1]);
+      if (startDist > 0) {
+        userScale = clamp(baseScale * (d / startDist), SCALE_MIN, SCALE_MAX);
+        currentScene.group.scale.setScalar(FEET_TO_METERS * userScale);
+      }
+      currentScene.group.rotation.y = baseYaw + (a - startTwist);
+      e.preventDefault();
+    } else if (gesture === 'drag' && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - lastX;
+      const dy = t.clientY - lastY;
+      lastX = t.clientX;
+      lastY = t.clientY;
+
+      // Move across the floor plane, relative to where the viewer is facing.
+      const cam = renderer.xr.getCamera();
+      const fwd = new THREE.Vector3();
+      cam.getWorldDirection(fwd);
+      fwd.y = 0;
+      if (fwd.lengthSq() < 1e-6) return;
+      fwd.normalize();
+      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+
+      const k = 0.005; // metres per pixel of drag
+      currentScene.group.position
+        .addScaledVector(right, dx * k)
+        .addScaledVector(fwd, -dy * k);
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) gesture = null;
+    else if (e.touches.length === 1) {
+      gesture = 'drag';
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    }
+  }, { passive: true });
 }
 
 function startARFlow() {
   initReticle();
+  setupARGestures();
   const sessionInit = {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -670,8 +798,7 @@ async function exportUSDZ(exporter, sceneToExport) {
 }
 
 // USDZ / AR Quick Look interprets model units as METERS. Our scene is built in
-// feet (1 unit = 1 ft), so without this the bin would appear ~118 ft across.
-const FEET_TO_METERS = 0.3048;
+// feet (1 unit = 1 ft), so FEET_TO_METERS (declared near the top) converts it.
 
 let usdzObjectUrl = null;
 
